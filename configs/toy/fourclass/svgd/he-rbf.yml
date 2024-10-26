@@ -1,0 +1,36 @@
+# load from the base file
+base: ../base.yml
+
+
+method:
+  name: svgd
+  num: 30
+  model_kernel:
+    name: model_layers
+    reduction: none
+    layer_kernel:
+      name: he
+      eps: 0.0035
+      arc_eps: 0.0040
+      abs_vals: true
+      detach_right: true
+      reduction: none
+      feature_kernel:
+        name: feature
+        detach_diag: true
+        kernel: rbf
+        params:
+          param: 4.5
+    layer_weighting:
+      name: list
+      weights: [0.05, 0.45, 0.85, 1.0]
+
+
+  ind_loss:
+    name: cross_entropy
+
+
+trainer:
+  metrics:
+    - name: accuracy
+      classes: 4

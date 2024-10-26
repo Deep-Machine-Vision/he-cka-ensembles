@@ -1,3 +1,16 @@
+# local files
+outputs/
+cossim_vs_mhe_ckas.pdf
+cossim_vs_mhe_mhes.pdf
+cossim_opt.gif
+cossim_opt.pdf
+mhe_opt.pdf
+mhe_opt.gif
+n1000-cossim.pdf
+n1000-mhe.pdf
+initial_points.pdf
+
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
@@ -73,7 +86,6 @@ docs/_build/
 
 # PyBuilder
 .pybuilder/
-target/
 
 # Jupyter Notebook
 .ipynb_checkpoints

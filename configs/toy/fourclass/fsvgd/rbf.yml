@@ -1,0 +1,21 @@
+# load from the base file
+base: ../base.yml
+
+
+# specify the method to use
+# available are basic (no repulsive), svgd, ensemble
+method:
+  name: function_svgd
+  num: 30
+  eta: 0.05
+  exp_std: 0.125
+  model_kernel:
+    name: function
+    detach_right: true
+    kernel: rbf
+  ind_loss:
+    name: cross_entropy
+
+trainer:
+  optim_args:
+    lr: 0.005

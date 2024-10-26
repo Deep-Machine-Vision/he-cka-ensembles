@@ -1,0 +1,15 @@
+# load from the base file
+base: ../base.yml
+
+
+method:
+  name: basic
+  num: 30
+  ind_loss:
+    name: cross_entropy
+
+
+trainer:
+  metrics:
+    - name: accuracy
+      classes: 4

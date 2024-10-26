@@ -1,0 +1,44 @@
+# specify file with extra functions
+# we use in this definition
+# once loaded any referenced function/class should now be from ext.<function_name>
+extras_file: fun.py
+
+
+# requirements (dataset and batch_size) for the dataloaders
+requirements:
+  exp_name: toy
+  sub_type: fourclass
+  batch_size: 100
+
+
+# the hypernetwork to use such as an ensemble, MLP, or transformer generator
+hyper:
+  name: ensemble
+  ensemble_size: 30
+  target:
+    name: mlp
+    activation: crater   # variance preserving variant of gelu
+    layers:
+      - in: 2
+        out: 30
+      - in: 30
+        out: 40
+      - in: 40
+        out: 30
+      - in: 30
+        out: 4
+
+# trainer specific settings
+trainer:
+  clip: 5.0
+  optim: 'adamw'
+  optim_args:
+    lr: 0.05
+    weight_decay: 0.0075
+  epochs: 1000
+  lr_patience: 400
+  warmup: 80
+  max_iter: 1200
+  save_every: 250
+  callbacks:
+    - ext.FourClassCallback()  # we support basic function calls/arguments

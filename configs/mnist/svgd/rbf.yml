@@ -1,0 +1,21 @@
+# load from the base file
+base: ../base.yml
+
+
+# specify the method to use
+# available are basic (no repulsive), svgd, ensemble
+method:
+  name: svgd
+  num: 5
+  model_kernel:
+    name: weight
+    kernel: rbf
+    detach_right: true
+  ind_loss:
+    name: cross_entropy
+
+
+trainer:
+  metrics:
+    - name: accuracy
+      classes: 10

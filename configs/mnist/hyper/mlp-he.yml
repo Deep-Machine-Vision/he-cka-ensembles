@@ -1,0 +1,155 @@
+# definition of the MLP hypernetwork for the mnist dataset
+
+# specify file with extra functions
+# we use in this definition
+# once loaded any referenced function/class should now be from ext.<function_name>
+extras_file: ../fun.py
+
+
+# requirements (dataset and batch_size) for the dataloaders
+requirements:
+  exp_name: mnist
+  batch_size: 300
+  loader_args:
+    bs_ood: 100  # extra loader arguments
+
+
+# the hypernetwork to use such as an ensemble, MLP, or transformer generator
+hyper:
+  name: mlp_layer_code_generator  # mlp based layer code (codes that are fed into each layer generator) generator
+  latent_size: 38
+  dim_multiplier: 2.84
+  mlp_dims: 4
+  bias: true
+  sn_coeff: 6.0
+  layer_code_generator:
+    name: layer_generator
+    code_size: 26
+    default_generators:
+      conv2d:
+        name: mlp_sampled_conv_generator  # each conv filter sampled independently
+        input_size: 26  # same as code size
+        dim_multiplier: 2.755
+        mlp_dims: 1
+        bias: true
+        sn_coeff: 3.0
+      linear:
+        name: mlp_layer_generator  # mlp based layer parameter generator
+        input_size: 26  # same as code size
+        dim_multiplier: 3.065
+        mlp_dims: 4
+        norm_last: true
+        affine_last: true
+        bias: true
+        sn_coeff: 3.0
+      final_linear:
+        name: mlp_layer_generator
+        input_size: 26  # same as code size
+        dim_multiplier: 3.011
+        mlp_dims: 2
+        norm_last: false
+        norm_before_last: false
+        affine_last: true
+        bias: true
+        sn_coeff: 3.0
+
+    target:  # build lenet
+      name: sequential
+      modules:
+        - name: conv2d
+          in_channels: 1
+          out_channels: 6
+          kernel_size: 5
+          act: crater  # variance preserving variant of gelu
+          pooling: max
+          gamma: 1.0
+        - name: conv2d
+          in_channels: 6
+          out_channels: 16
+          kernel_size: 5
+          act: crater
+          pooling: max
+          gamma: crater
+        - name: flatten
+          track: false  # do not track this layer
+        - name: linear
+          in_features: 256
+          out_features: 120
+          act: crater
+          gamma: crater
+        - name: linear
+          in_features: 120
+          out_features: 84
+          act: crater
+          gamma: crater
+        - name: linear
+          in_features: 84
+          out_features: 10
+          act: null
+          gamma: crater
+
+
+# specify training method
+method:
+  name: repulsive_kernel
+  num: 5
+  gamma: 10.151
+  gamma_ood: 3.688  # suprisingly too much ood repulsion with MLP hurt performance. Hypernetwork dynamics have been weird
+  beta_ood: 0.0673
+  l2_reg: 0.0717
+
+  warmup: 2075  # warmup he/repulsive term (steps not epochs)
+  model_kernel:
+    name: model_layers
+    layer_kernel:
+      name: he
+      eps: 0.0025
+      arc_eps: 0.065
+      feature_kernel:
+        name: feature
+        detach_diag: true
+        kernel: cossim
+    layer_weighting:
+      name: start_end_linear
+      first_layer: 0.03
+      middle_start: 0.60
+      middle_increase: 1.80
+      last_layer: 6.8
+
+  model_kernel_ood:
+    name: model_layers
+    layer_kernel:
+      name: he
+      eps: 0.0025
+      arc_eps: 0.065
+      feature_kernel:
+        name: feature
+        detach_diag: true
+        kernel: cossim
+    layer_weighting:
+      name: start_end_linear
+      first_layer: 0.03
+      middle_start: 0.60
+      middle_increase: 1.80
+      last_layer: 6.8
+
+  ind_loss:
+    name: cross_entropy
+  
+  ood_loss:
+    name: mean_softmax_entropy
+
+
+# trainer specific settings
+trainer:
+  ood_N: 100
+  clip: 0.05  # 0.1
+  optim: 'adamw'
+  optim_args:
+    lr: 0.002405
+    weight_decay: 0.0025
+  epochs: 85
+  warmup: 20
+  save_every: 5
+  callbacks:
+    - ext.MNISTTestCallback()

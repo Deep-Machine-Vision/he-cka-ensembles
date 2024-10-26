@@ -1,0 +1,91 @@
+# load from the base file
+base: ../base.yml
+
+# requirements (dataset and batch_size) for the dataloaders
+requirements:
+  loader_args:
+    bs_ood: 30  # extra loader arguments
+
+
+# method:
+#   name: repulsive_kernel
+#   num: 30
+#   gamma: 13.0
+#   warmup: 8  # warmup he for 8 steps
+#   learnable: true
+#   model_kernel:
+#     name: model_layers
+#     layer_kernel:
+#       name: he
+#       eps: 0.1
+#       arc_eps: 0.01
+#       learnable: true
+#       normalize: true
+#       feature_kernel:
+#         name: feature
+#         detach_diag: true
+#         kernel: cossim
+#     layer_weighting:
+#       name: tensor
+#       weights: 3
+#       learnable: true
+
+#   ind_loss:
+#     name: cross_entropy
+
+method:
+  name: repulsive_kernel
+  num: 30
+
+  ind_loss:
+    name: cross_entropy
+  ood_loss:
+    name: mean_softmax_entropy
+  
+  gamma: 2.0
+  gamma_ood: 20.0
+  learnable: true
+  beta_ind: 2.0
+  beta_ood: 0.5
+  warmup: 8
+  model_kernel:
+    name: model_layers
+    layer_kernel:
+      name: he
+      learnable: true
+      eps: 0.025
+      arc_eps: 0.025
+      feature_kernel:
+        name: feature
+        kernel: rbf
+    layer_weighting:
+      name: tensor
+      weights: 4  # 4 layers
+      learnable: true
+
+  model_kernel_ood:
+    name: model_layers
+    layer_kernel:
+      name: he
+      learnable: true
+      eps: 0.025
+      arc_eps: 0.15
+      feature_kernel:
+        name: feature
+        kernel: rbf
+    layer_weighting:
+      name: tensor
+      weights: 4  # 4 layers
+      learnable: true
+
+
+trainer:
+  ood_N: 30
+  learn_hyper: true  # learn repulsive kernel hyperparameters
+  learn_hyper_loss:  # hyperparameter loss
+    name: inlier_outlier_entropy
+    weight: 10.0
+  metrics:
+    - name: accuracy
+      classes: 4
+    - name: ckas

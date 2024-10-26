@@ -1,0 +1,129 @@
+# definition of the MLP hypernetwork for the fourclass dataset
+
+
+# specify file with extra functions
+# we use in this definition
+# once loaded any referenced function/class should now be from ext.<function_name>
+extras_file: ../fun.py
+
+
+# requirements (dataset and batch_size) for the dataloaders
+requirements:
+  exp_name: toy
+  sub_type: fourclass
+  batch_size: 100
+  loader_args:
+    bs_ood: 30  # extra loader arguments
+
+
+# the hypernetwork to use such as an ensemble, MLP, or transformer generator
+hyper:
+  name: mlp_layer_code_generator  # mlp based layer code (codes that are fed into each layer generator) generator
+  latent_size: 8
+  mlp_dims: [24, 32, 48]
+  bias: true
+  sn_coeff: 3.0
+  layer_code_generator:
+    name: layer_generator
+    code_size: 12
+    default_generators:
+      linear:
+        name: mlp_layer_generator  # mlp based layer parameter generator
+        input_size: 12  # same as code size
+        mlp_dims: [14, 28]
+        norm_last: true
+        affine_last: true
+        bias: true
+        sn_coeff: 5.0
+      final_linear:
+        name: mlp_layer_generator
+        input_size: 12  # same as code size
+        mlp_dims: [32, 48]
+        norm_last: false
+        norm_before_last: false
+        affine_last: true
+        bias: true
+        sn_coeff: 5.0
+
+    # the target network to generate
+    target:
+      name: mlp
+      activation: crater   # variance preserving variant of gelu
+      layers:
+        - in: 2
+          out: 30
+        - in: 30
+          out: 40
+        - in: 40
+          out: 30
+        - in: 30
+          out: 4
+          last: true  # define this as a FinalLinear class
+
+
+# specify training method
+method:
+  name: repulsive_kernel
+  num: 30
+  gamma: 2.0
+  gamma_ood: 22.0
+  warmup: 300  # warmup he for 5 steps
+  beta_ind: 2.0
+  beta_ood: 2.0
+
+  model_kernel:
+    name: model_layers
+    layer_kernel:
+      name: he
+      he_s: 3
+      eps: 0.0001
+      arc_eps: 0.035
+      # abs_vals: true
+      feature_kernel:
+        name: feature
+        detach_diag: true
+        kernel: rbf
+        params:
+          param: 6.0
+    layer_weighting:
+      name: list
+      weights: [0.05, 0.35, 0.85, 1.0]
+
+  model_kernel_ood:
+    name: model_layers
+    layer_kernel:
+      name: he
+      he_s: 3
+      eps: 0.0001
+      arc_eps: 0.035
+      feature_kernel:
+        name: feature
+        kernel: rbf
+        params:
+          param: 6.0
+    layer_weighting:
+      name: list
+      weights: [0.05, 0.35, 0.85, 1.0]
+
+  ind_loss:
+    name: cross_entropy
+  
+  ood_loss:
+    name: mean_softmax_entropy
+
+
+# trainer specific settings
+trainer:
+  ood_N: 30
+  clip: 1.0
+  optim: 'adamw'
+  optim_args:
+    lr: 0.0035
+    weight_decay: 0.0075
+  epochs: 1000
+  lr_patience: 400
+  warmup: 100
+  max_iter: 1000
+  save_every: 250
+  callbacks:
+    - ext.FourClassCallback()  # we support basic function calls/arguments

@@ -1,0 +1,94 @@
+# definition of the MLP hypernetwork for the fourclass dataset
+
+
+# specify file with extra functions
+# we use in this definition
+# once loaded any referenced function/class should now be from ext.<function_name>
+extras_file: ../fun.py
+
+
+# requirements (dataset and batch_size) for the dataloaders
+requirements:
+  exp_name: toy
+  sub_type: fourclass
+  batch_size: 100
+
+
+# the hypernetwork to use such as an ensemble, MLP, or transformer generator
+hyper:
+  name: mlp_layer_code_generator  # mlp based layer code (codes that are fed into each layer generator) generator
+  latent_size: 8
+  mlp_dims: [32, 64]
+  bias: true
+  sn_coeff: 1.0
+  layer_code_generator:
+    name: layer_generator
+    code_size: 12
+    default_generators:
+      linear:
+        name: mlp_layer_generator  # mlp based layer parameter generator
+        input_size: 12  # same as code size
+        mlp_dims: [24, 48]
+        norm_last: true
+        affine_last: true
+        bias: true
+        sn_coeff: 1.0
+      final_linear:
+        name: mlp_layer_generator
+        input_size: 12  # same as code size
+        mlp_dims: [20, 28]
+        norm_last: false
+        norm_before_last: false
+        affine_last: true
+        bias: true
+        sn_coeff: 1.0
+
+    # the target network to generate
+    target:
+      name: mlp
+      activation: crater   # variance preserving variant of gelu
+      layers:
+        - in: 2
+          out: 30
+        - in: 30
+          out: 40
+        - in: 40
+          out: 30
+        - in: 30
+          out: 4
+          last: true  # define this as a FinalLinear class
+
+
+
+# specify training method
+method:
+  name: basic
+  num: 30
+  ind_loss:
+    name: cross_entropy
+# method:
+#   name: svgd
+#   num: 30
+#   model_kernel:
+#     name: weight
+#     kernel: rbf
+#     detach_right: true
+#     params:
+#       param: 3.0
+#   ind_loss:
+#     name: cross_entropy
+
+# trainer specific settings
+trainer:
+  clip: 0.5
+  optim: 'adamw'
+  optim_args:
+    lr: 0.001
+    weight_decay: 0.01
+  epochs: 1000
+  lr_patience: 400
+  warmup: 75
+  max_iter: 1200
+  save_every: 250
+  callbacks:
+    - ext.FourClassCallback()  # we support basic function calls/arguments

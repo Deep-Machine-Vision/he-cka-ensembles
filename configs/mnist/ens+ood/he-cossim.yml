@@ -1,0 +1,64 @@
+# load from the base file
+base: ../base.yml
+
+
+requirements:
+  loader_args:
+    bs_ood: 100  # extra loader arguments
+
+
+method:
+  name: repulsive_kernel
+  num: 5
+  gamma: 0.2  # 0.61
+  gamma_ood: 1.125  # 1.025
+  beta_ood: 1.67  # 1.15
+
+  warmup: 50  # warmup he/repulsive term
+  model_kernel:
+    name: model_layers
+    layer_kernel:
+      name: he
+      eps: 0.0025
+      arc_eps: 0.065
+      feature_kernel:
+        name: feature
+        detach_diag: true
+        kernel: cossim
+    layer_weighting:
+      name: start_end_linear
+      first_layer: 0.03
+      middle_start: 0.60
+      middle_increase: 1.80
+      last_layer: 6.8
+
+  model_kernel_ood:
+    name: model_layers
+    layer_kernel:
+      name: he
+      eps: 0.0025
+      arc_eps: 0.065
+      feature_kernel:
+        name: feature
+        detach_diag: true
+        kernel: cossim
+    layer_weighting:
+      name: start_end_linear
+      first_layer: 0.03
+      middle_start: 0.60
+      middle_increase: 1.80
+      last_layer: 6.8
+
+  ind_loss:
+    name: cross_entropy
+  
+  ood_loss:
+    name: mean_softmax_entropy
+
+
+trainer:
+  ood_N: 100
+  metrics:
+    - name: accuracy
+      classes: 10
+    - name: ckas

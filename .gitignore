@@ -9,7 +9,8 @@ mhe_opt.gif
 n1000-cossim.pdf
 n1000-mhe.pdf
 initial_points.pdf
-
+data/FashionMNIST
+data/FastMNIST
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

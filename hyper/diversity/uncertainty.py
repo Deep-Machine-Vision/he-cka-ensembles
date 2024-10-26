@@ -197,11 +197,11 @@ def get_roc_auc_ensemble(hyper, params, test_loader, ood_test_loader, uncertaint
         confidences = torch.cat(confidences)
 
     # print('CONF')
-    plt.hist(torch.cat(conf_in).cpu().numpy(), bins=50, density=True, label='In dist')
-    plt.hist(torch.cat(conf_out).cpu().numpy(), bins=50, density=True, label='Out dist', alpha=0.7)
-    plt.legend()
-    plt.savefig('res.png')
-    plt.close()
+    # plt.hist(torch.cat(conf_in).cpu().numpy(), bins=50, density=True, label='In dist')
+    # plt.hist(torch.cat(conf_out).cpu().numpy(), bins=50, density=True, label='Out dist', alpha=0.7)
+    # plt.legend()
+    # plt.savefig('res.png')
+    # plt.close()
 
     # do auroc for confidence levels
     fpr, tpr, roc_thresholds = metrics.roc_curve(rev_labels_uncertainties.cpu().numpy(), confidences.cpu().numpy())

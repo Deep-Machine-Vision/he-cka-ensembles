@@ -11,6 +11,11 @@ n1000-mhe.pdf
 initial_points.pdf
 data/FashionMNIST
 data/FastMNIST
+data/MNIST
+data/mnist_ood
+
+# wandb related files
+wandb/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

@@ -545,7 +545,7 @@ class ImageOODDataset(Dataset):
     # generate the data in the part files
     # print('REGEN', regen, regenerate)
     if regen or regenerate:
-      print('Caching/pregenerating OOD dataset')
+      print('Caching/pregenerating OOD dataset. NOTE: this might take a while and you must restart the program once complete to ensure loading seed stays consistent!')
       # use self as dataloader
       ood_loader = torch.utils.data.DataLoader(self, batch_size=1, shuffle=False, num_workers=0, drop_last=True)
       
@@ -569,6 +569,11 @@ class ImageOODDataset(Dataset):
       
       # save final parts file (might have more or less than part_size)
       torch.save(part_data, self.part_files[len(self.part_files) - 1])
+      
+      # notify to user we have finished pregenerating and to restart the program
+      print('Finished pregenerating OOD dataset. Please restart the program to ensure loading seed stays consistent between runs with and without pregenerating!')
+      print('Exiting...')
+      exit(0)
       
     # set flag we're using pregenerated dataset
     self.pregen = True

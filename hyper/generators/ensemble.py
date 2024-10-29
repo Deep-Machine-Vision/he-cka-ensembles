@@ -63,6 +63,11 @@ class FixedEnsembleModel(LayerCodeModelGenerator):
     is_rand = isinstance(codes, str)
     
     if not is_rand:
+      if isinstance(codes, int):  # number to sample
+        codes = torch.arange(0, codes, 1, device=device, dtype=torch.long)
+      elif codes is None:
+        codes = torch.arange(0, self.size, 1, device=device, dtype=torch.long)
+      
       assert len(codes.shape) <= 1, 'Invalid number of code dims. Expecting 1'
 
       # assert right indices

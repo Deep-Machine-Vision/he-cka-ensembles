@@ -1,0 +1,15 @@
+# load from the base file
+base: ../base.yml
+
+method:
+  name: mle
+  num: 5
+  beta_ind: 5.0  # ensemble size
+  ind_loss:
+    name: cross_entropy
+
+
+trainer:
+  metrics:
+    - name: accuracy
+      classes: 10

@@ -1,0 +1,35 @@
+# load from the base file
+base: ../base.yml
+
+
+method:
+  name: repulsive_kernel
+  num: 5
+  gamma: 1.0
+  beta_ind: 5.0  # ensemble size
+  warmup: 10
+  model_kernel:
+    name: model_layers
+    layer_kernel:
+      name: he
+      eps: 0.001
+      arc_eps: 0.001
+      use_exp: true
+      feature_kernel:
+        name: feature
+        detach_diag: true
+        kernel: linear
+    layer_weighting:
+      name: list
+      weights: [0.0, 0.15, 0.25, 0.35, 0.4, 0.45, 0.5, 0.0001]
+      normalize: false
+
+  ind_loss:
+    name: cross_entropy
+
+
+trainer:
+  metrics:
+    - name: accuracy
+      classes: 10
+    - name: ckas

@@ -1,0 +1,40 @@
+# specify file with extra functions
+# we use in this definition
+# once loaded any referenced function/class should now be from ext.<function_name>
+extras_file: fun.py
+
+
+# requirements (dataset and batch_size) for the dataloaders
+requirements:
+  seed: 10
+  exp_name: cifar
+  batch_size: 128
+
+
+# the hypernetwork to use such as an ensemble, MLP, or transformer generator
+hyper:
+  name: ensemble
+  ensemble_size: 5
+  target:  # build resnet18
+    name: resnet18
+    num_classes: 10
+    act: relu
+
+
+# trainer specific settings
+trainer:
+  optim: 'sgd'
+  optim_args:
+    lr: 0.1
+    momentum: 0.9
+    weight_decay: 0.0005
+  epochs: 200
+  scheduler:
+    name: cosine_annealing
+  schedule_epoch: true
+  wd_affine: true
+  save_every: 5
+  callbacks:
+    - ext.CIFARTestCallback(1)
+
+

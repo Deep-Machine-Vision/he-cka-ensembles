@@ -1,0 +1,24 @@
+# load from the base file
+base: ../base.yml
+
+method:
+  name: mle
+  num: 5
+  beta_ind: 5.0  # ensemble size
+  ind_loss:
+    name: cross_entropy
+
+# use the testing module for the ensemble
+# this is to ensure that the batched modules work correctly
+# and perform similarly to the original modules
+hyper: ext.resnet18_ensemble()
+
+
+trainer:
+  metrics:
+    - name: accuracy
+      classes: 10
+  scheduler:
+    name: cosine_annealing
+  schedule_epoch: true
+  wd_affine: true

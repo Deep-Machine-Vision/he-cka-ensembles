@@ -1,0 +1,35 @@
+# load from the base file
+base: ../base.yml
+
+
+method:
+  name: svgd
+  num: 5
+  beta_ind: 5.0  # ensemble size
+  model_kernel:
+    name: model_layers
+    reduction: none
+    layer_kernel:
+      name: he
+      eps: 0.001
+      arc_eps: 0.001
+      use_exp: true
+      detach_right: true
+      reduction: none
+      feature_kernel:
+        name: feature
+        detach_diag: true
+        kernel: linear
+    layer_weighting:
+      name: list
+      weights: [0.00005, 0.122, 0.221, 0.321, 0.421, 0.521, 0.620, 0.0002]
+      normalize: false
+
+  ind_loss:
+    name: cross_entropy
+
+
+trainer:
+  metrics:
+    - name: accuracy
+      classes: 10

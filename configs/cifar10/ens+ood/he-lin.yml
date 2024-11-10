@@ -1,0 +1,61 @@
+# load from the base file
+base: ../base.yml
+
+
+requirements:
+  loader_args:
+    bs_ood: 48  # extra loader arguments
+
+
+method:
+  name: repulsive_kernel
+  num: 5
+  gamma: 0.5
+  beta_ind: 5.0  # ensemble size
+  beta_ood: 0.75
+  warmup: 10
+  model_kernel:
+    name: model_layers
+    layer_kernel:
+      name: he
+      eps: 0.001
+      arc_eps: 0.001
+      use_exp: true
+      feature_kernel:
+        name: feature
+        detach_diag: true
+        kernel: linear
+    layer_weighting:
+      name: list
+      weights: [0.00005, 0.122, 0.221, 0.321, 0.421, 0.521, 0.620, 0.0002]
+      normalize: false
+  
+  model_kernel_ood:
+    name: model_layers
+    layer_kernel:
+      name: he
+      eps: 0.001
+      arc_eps: 0.001
+      use_exp: true
+      feature_kernel:
+        name: feature
+        detach_diag: true
+        kernel: linear
+    layer_weighting:
+      name: list
+      weights: [0.00005, 0.122, 0.221, 0.321, 0.421, 0.521, 0.620, 0.0002]
+      normalize: false
+
+  ind_loss:
+    name: cross_entropy
+
+  ood_loss:
+    name: mean_softmax_entropy
+
+
+trainer:
+  ood_N: 48
+  metrics:
+    - name: accuracy
+      classes: 10
+    - name: ckas

@@ -277,6 +277,10 @@ class ParametersGroup(GenModule):
     """
     return True
 
+  def names(self):
+    """ Return a list of parameter names """
+    return list(self.shapes.keys())
+
   def gen_empty_params(self, dtype=None, device=None, requires_grad=True):
     """ By default we generate parameters but sometimes it's useful to generate an empty version, ie for an ensemble, of the parameters  """
     params = OrderedDict()

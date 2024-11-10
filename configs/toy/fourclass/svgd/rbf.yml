@@ -12,7 +12,7 @@ method:
     kernel: rbf
     detach_right: true
     params:
-      param: 3.0
+      param: 1.0
   ind_loss:
     name: cross_entropy
 

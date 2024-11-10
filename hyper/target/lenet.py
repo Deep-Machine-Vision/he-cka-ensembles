@@ -4,11 +4,12 @@ from hyper.generators.base import LayerCodeModelGenerator
 from hyper.layers.generators.conv import MLPSampledConvLayerGenerator
 from hyper.layers.generators.base import MLPLayerGenerator
 from hyper.layers.pool import AvgPool2d
-from hyper.layers.module import SequentialModule, GenModule, Reshape, Flatten, Activation, Module
+from hyper.layers.module import SequentialModule, GenModule, Reshape, Flatten, Activation, Module, register_gen_module
 
 
+@register_gen_module('lenet5')
 class LeNet(GenModule):
-  def __init__(self, in_channels: int=3, num_classes: int=10, bias: bool=True, nfnet: bool=False, flatten_dims: int=256, activation: str='crater', gamma: float=1.0, track: bool = True):
+  def __init__(self, in_channels: int=3, num_classes: int=10, bias: bool=True, nfnet: bool=False, flatten_dims: int=256, activation: str='crater', param_scale='gamma', gamma: float=1.0, track: bool = True):
     """ Create a batchable LeNet classification model
 
     Args:
@@ -27,12 +28,12 @@ class LeNet(GenModule):
     # SequentialModule makes it easy to use the sequence as the define_generated_modules function and not specify it manually
     conv_mod = ScaledWConv2d if nfnet else Conv2d
     self.sequence = SequentialModule(
-      conv_mod(in_channels, 6, 5, pooling='max', act=activation, gamma=gamma, bias=bias),
-      conv_mod(6, 16, 5, pooling='max', act=activation, gamma=activation, bias=bias),
+      conv_mod(in_channels, 6, 5, pooling='max', act=activation, gamma=gamma, bias=bias, param_scale=param_scale),
+      conv_mod(6, 16, 5, pooling='max', act=activation, gamma=activation, bias=bias, param_scale=param_scale),
       Flatten(track=False),  # don't track flatten
-      Linear(flatten_dims, 120, bias=bias, act=activation, gamma=activation),
-      Linear(120, 84, bias=bias, act=activation, gamma=activation),
-      FinalLinear(84, num_classes, bias=bias, act=None, gamma=activation),
+      Linear(flatten_dims, 120, bias=bias, act=activation, gamma=activation, param_scale=param_scale),
+      Linear(120, 84, bias=bias, act=activation, gamma=activation, param_scale=param_scale),
+      FinalLinear(84, num_classes, bias=bias, act=None, gamma=activation, param_scale=param_scale),
       track=track
     )
   

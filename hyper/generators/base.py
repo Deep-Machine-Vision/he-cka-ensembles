@@ -493,8 +493,9 @@ class ModelGenerator(nn.Module):
   @staticmethod
   def from_config(config: dict):
     """ Create a model generator from a configuration """
-    target = build_gen_module(config['target'])
-    config['target'] = target
+    if isinstance(config['target'], (OrderedDict, dict)):
+      target = build_gen_module(config['target'])
+      config['target'] = target
     return config
 
 
@@ -742,7 +743,8 @@ class GeneratedLayerCodeModelGenerator(ModelGenerator):
     """ Returns a sample of input to parameters """
     return str(size)  # hacky way right now but works
 
-  def forward(self, params: Union[torch.Tensor, dict, OrderedDict, DefaultOrderedDict], x: torch.Tensor):
+
+  def forward(self, params: Union[torch.Tensor, dict, OrderedDict, DefaultOrderedDict], x: torch.Tensor, sample_params: bool=False, ret_params: bool=False, feature_split: bool=False, **split_args: dict):
     """ Takes the generated/specified parameters and runs through target model also returning model's tracked features
 
     Args:
@@ -757,10 +759,31 @@ class GeneratedLayerCodeModelGenerator(ModelGenerator):
     """
 
     # generate parameters if not already specified
-    if isinstance(params, (list, tuple, torch.Tensor)):
-      params = self.forward_params(params)
+    # if isinstance(params, torch.Tensor):
+    if sample_params or isinstance(params, int):
+      # hacky but it works
+      if hasattr(self, 'forward_random_params') and isinstance(params, str):
+        params = self.forward_random_params(int(params))
+      else:
+        sparam = self.sample_params(params, device=x.device)   # handle sampling codes for the parameters
+        params = self.forward_params(sparam)
+    elif not isinstance(params, OrderedDict):   # assume not already sampled parameters in layer code generator (NOTE THIS DOES NOT WORK FOR OTHERS @TODO only specify in layer code generator)
+        params = self.forward_params(params)
+    
+    # if doing a feature split then specify args as well
+    if feature_split:
+      res = self.forward_split(params, x, **split_args)
+      if ret_params:  # add params to return dictionary
+        res['params'] = params
+      return res
+    else:
+      # forward through target model
+      outs = self.layer_gen.target(params, x)
 
-    return self.layer_gen.target(params, x)
+      # normal tuple return with params as first return
+      if ret_params:
+        return params, outs
+      return outs
 
   @staticmethod
   def from_config(config: dict, code_gen: nn.Module=None):

@@ -1,4 +1,5 @@
 """ Functions useful for training """
+from collections import OrderedDict
 from typing import Any, Dict, List, Tuple, Union, Callable
 import random
 import time
@@ -14,7 +15,6 @@ from hyper.util.collections import flatten_keys, unflatten_keys
 from hyper.diversity.methods import ParticleMethods
 from hyper.generators.base import LayerCodeModelGenerator
 from hyper.experiments.metrics import Metric, Callback
-from hyper.util import CosineWarmupScheduler, null_fn
 import torch.distributed as dist
 from torch.nn.parallel import DistributedDataParallel as DDP
 import torch.multiprocessing as mp
@@ -31,9 +31,11 @@ class HyperTrainer(nn.Module):
       optim: str='adamw',
       optim_args: Dict[str, Any]=None,
       ood_N: int=0,
-      warmup: int=None,
+      scheduler: int=None,
+      schedule_epoch: bool=False,
       max_iter: int=None,
       clip: float=None,
+      wd_affine: bool=False,
       lr_patience: int=None,
       learn_hyper: bool=False,
       learn_hyper_rollout: int=1,
@@ -56,9 +58,11 @@ class HyperTrainer(nn.Module):
         output_dir (str, optional): Output directory to save logs and weights. Defaults to None.
         optim (str, optional): The optimizer to use. Defaults to 'adamw'.
         ood_N (int, optional): Number of out of distribution samples. Defaults to 0.
-        warmup (int, optional): Number of warmup steps. Defaults to None.
-        max_iter (int, optional): Maximum number of iterations for cosine annealing. Defaults to None ie number of epochs.
+        scheduler (int, optional): The lr scheduler to use. Defaults to None.
+        schedule_epoch (bool). If lr schedule is defined then call scheduler every epoch (True) or every step (False)
+        max_iter (int, optional): Maximum number of iterations or epochs for lr scheduler. Notation is weird check the code for more details. Defaults to None ie number of epochs.
         clip (float, optional): Gradient norm clipping value. Defaults to None.
+        wd_affine (bool): Apply weight decay to affine and bias values. Default is False.
         lr_patience (int, optional): Number of epochs to wait before reducing learning rate. Defaults to None.
         learn_hyper (bool, optional): Whether to learn the hyper model parameters using a rollout. Defaults to False.
         learn_hyper_rollout (int, optional): Number of rollouts to learn the hyper model. Defaults to 0.
@@ -84,8 +88,10 @@ class HyperTrainer(nn.Module):
     self.model_bs = method.num
     self.output_dir = output_dir
     self.ood_N = ood_N
-    self.warmup_steps = warmup
+    self.scheduler_func = scheduler
+    self.schedule_epoch = schedule_epoch
     self.clip = clip
+    self.wd_affine = wd_affine
     self.lr_patience = lr_patience
     self.learn_hyper = learn_hyper
     self.learn_hyper_rollout = learn_hyper_rollout
@@ -119,7 +125,7 @@ class HyperTrainer(nn.Module):
     self.ood_iter = None
     self.optim_hyper = None
     self.optim_method = None
-    self.warmup = None
+    self.lr_scheduler = None
     self.rlop = None
     self.rlop_method = None
  
@@ -193,6 +199,11 @@ class HyperTrainer(nn.Module):
     # if self.learn_hyper and self.learn_hyper_rollout > 0:
     #   train_rollouts = iter(self.train_loader)
     
+    # reset matric trackers
+    with torch.no_grad():
+      for metric in self.metrics:
+        metric.reset()
+    
     # loop through batches
     for b, (X, Y) in enumerate(tq_train):
       X = X.to(self.device_id)
@@ -217,6 +228,14 @@ class HyperTrainer(nn.Module):
         split_pred_only=not self.configs.get('separate_ood_features', True)
       )
       params = track['params']
+      p2 = OrderedDict()
+      for k, v in flatten_keys(params).items():
+        if isinstance(v, torch.Tensor):
+          p2[k] = v.retain_grad()
+        p2[k] =v 
+      _, em = flatten_keys(params, include_empty=True)
+      em.update(p2)
+      params = unflatten_keys(em)
       
       # push through method and get loss/forward data
       method_track = self.particle_method.forward(
@@ -303,8 +322,9 @@ class HyperTrainer(nn.Module):
       #   dist.barrier()
     
       # apply schedulers with smoothing
-      if self.warmup is not None:
-        self.warmup.step()
+      if not self.schedule_epoch:  # we apply scheduler at step level
+        if self.lr_scheduler is not None:
+          self.lr_scheduler.step()
 
       # do logging
       with torch.no_grad():
@@ -349,9 +369,14 @@ class HyperTrainer(nn.Module):
     train_time_end = time.time() - train_time_start
     self.total_train_time += train_time_end
     
+    # otherwise apply scheduler at epoch level
+    if self.schedule_epoch:
+      if self.lr_scheduler is not None:
+        self.lr_scheduler.step()
+    
     if self.rank == 0:
       print(f'Finished training in {train_time_end}s. Total train time {self.total_train_time}s')
-
+  
   def val_single_epoch(self, epoch: int, epochs: int):
     """ Test the model for a single epoch """
     if self.rank == 0:
@@ -372,6 +397,11 @@ class HyperTrainer(nn.Module):
       tq_test = tqdm(self.test_loader, desc='Test', total=self.num_test, colour='blue')
     else:
       tq_test = self.test_loader
+    
+    # reset matric trackers
+    with torch.no_grad():
+      for metric in self.metrics:
+        metric.reset()
     
     test_time_start = time.time()
     for b, (X, Y) in enumerate(tq_test):
@@ -492,27 +522,23 @@ class HyperTrainer(nn.Module):
       if 'decoupled_weight_decay' not in optim_args:
         optim_args['decoupled_weight_decay'] = True
     
-    # if self.optim_name == 'sgd':
-    #   if 'momentum' not in optim_args:
-    #     optim_args['momentum'] = 0.9
-    #   if 'nesterov' not in optim_args:
-    #     optim_args['nesterov'] = True
-    
     # selective weight decay
     for name, param in self.hyper.named_parameters():
       weight_decay = all_weight_decay
 
-      # reduce learning rate for affine weights/remove weight decay
-      if name.endswith('affine_weight') or name.endswith('affine_bias') or 'affine.self' in name:  # see norm.py about affine
-        weight_decay = 0.0
-      
-      # reduce learning rate/remove weight decay for skip gain residual connections
-      if 'skip_gain' in name:
-        weight_decay = 0.0
+      # remove weight decay on affine parameters unless otherwise specified
+      if not self.wd_affine:
+        # reduce learning rate for affine weights/remove weight decay
+        if name.endswith('affine_weight') or name.endswith('affine_bias') or 'affine.self' in name:  # see norm.py about affine
+          weight_decay = 0.0
+        
+        # reduce learning rate/remove weight decay for skip gain residual connections
+        if 'skip_gain' in name:
+          weight_decay = 0.0
 
-      # no weight decay for bias
-      if name.endswith('bias'):
-        weight_decay = 0.0
+        # no weight decay for bias
+        if name.endswith('bias'):
+          weight_decay = 0.0
 
       # add group of parameters to optimizer
       params.append({
@@ -539,19 +565,19 @@ class HyperTrainer(nn.Module):
     # dummy var given sometimes this is empty
     if len(self.params_method) == 0:
       self.params_method = [torch.tensor(0.0, requires_grad=True)]
-    self.optim_method = optim(self.params_method, lr=optim_args['lr'])
+    self.optim_method = optim(self.params_method)
 
   def prepare_schedulers(self, epochs: int):
     """ Prepare the schedulers """
     # cosine annealing warmup
-    if self.warmup_steps is not None and self.warmup_steps > 0:
-      self.warmup = CosineWarmupScheduler(
-        self.optim_hyper,
-        warmup=int(self.warmup_steps * self.num_train),
-        max_iters=int((epochs*self.num_train) if self.max_iter is None else (self.max_iter*self.num_train)),
-      )
+    if self.scheduler_func is not None:
+      if self.schedule_epoch:
+        T_max = epochs if self.max_iter is None else self.max_iter  # max epoch iterations
+      else:
+        T_max = int((epochs*self.num_train) if self.max_iter is None else (self.max_iter*self.num_train))
+      self.lr_scheduler = self.scheduler_func(self.optim_hyper, T_max=T_max)
     else:
-      self.warmup = None
+      self.lr_scheduler = None
     
     # lr patience/reduce lr on plateau
     if self.lr_patience is not None and self.lr_patience > 0:
@@ -584,7 +610,7 @@ class HyperTrainer(nn.Module):
       'method': self.particle_method.state_dict(),
       'optim': self.optim_hyper.state_dict(),
       'optim_method': self.optim_method.state_dict(),
-      'warmup': self.warmup.state_dict() if self.warmup is not None else None,
+      'lr_scheduler': self.lr_scheduler.state_dict() if self.lr_scheduler is not None else None,
       'rlop': self.rlop.state_dict() if self.rlop is not None else None,
       'rlop_method': self.rlop_method.state_dict() if self.rlop_method is not None else None,
       **extra
@@ -603,8 +629,12 @@ class HyperTrainer(nn.Module):
     if self.optim_method is not None:
       self.optim_method.load_state_dict(state['optim_method'])
     
-    if state.get('warmup') is not None and self.warmup is not None:
-      self.warmup.load_state_dict(state['warmup'])
+    # handle loading old files with different name. @TODO remove later on
+    if state.get('warmup') is not None and self.lr_scheduler is not None:
+      self.lr_scheduler.load_state_dict(state['warmup'])
+    
+    if state.get('lr_scheduler') is not None and self.lr_scheduler is not None:
+      self.lr_scheduler.load_state_dict(state['lr_scheduler'])
     
     if state.get('rlop') is not None and self.rlop is not None:
       self.rlop.load_state_dict(state['rlop'])
@@ -633,7 +663,7 @@ class HyperTrainer(nn.Module):
     else:
       print('Failed to find weight file', weight_file, 'ignoring...')
 
-  def train(self, epochs: int=None, start_epoch: int=None, load_from_checkpoint: str=None, save_checkpoint: str=None, save_every: int=None, seed: int=None, ddp_rank: int=None):
+  def train(self, epochs: int=None, start_epoch: int=None, load_from_checkpoint: str=None, save_checkpoint: str=None, save_every: int=None, seed: int=None, ddp_rank: int=None, start_weights: str=None):
     """ Train the model for the specified number of epochs
     
     Args:
@@ -644,6 +674,7 @@ class HyperTrainer(nn.Module):
       save_every (int, optional): Save every n epochs. Defaults to None (ie disable).
       seed (int, optional): The seed for reproducibility. Defaults to None. If None then it is not set
       ddp_rank: sets mode as distributed data parallel and specifies the rank
+      start_weights (str, optional): if specified load the weight file as the starting weights of the hypernetwork/ensemble. This assumes load from checkpoint is None.
     """
     
     # init seeds
@@ -676,6 +707,9 @@ class HyperTrainer(nn.Module):
     if start_epoch is None:
       start_epoch = self.configs.get('start_epoch', 0)
     
+    if load_from_checkpoint is not None and start_weights is not None:
+      raise ValueError('Can only specify loading from a checkpoint (ie resume training) or start weights (ie initialize hypernetwork/ens with specified weights) not both at the same time')
+    
     # if we are loading from a checkpoint
     # load the saved data
     if load_from_checkpoint is not None:
@@ -685,6 +719,17 @@ class HyperTrainer(nn.Module):
         if not os.path.exists(load_from_checkpoint):
           raise FileNotFoundError(f'Failed to find checkpoint file {load_from_checkpoint}')
       self.load_checkpoint(l_file)
+
+    if start_weights is not None:
+      if not os.path.exists(start_weights):
+        start_weights = os.path.join(os.path.dirname(__file__), '..', '..', start_weights)
+        if not os.path.exists(start_weights):
+          raise FileNotFoundError(f'Failed to find checkpoint (start weights) file {start_weights}')
+      state = torch.load(start_weights)
+      if 'hyper' in state:  # checkpoint file or standalone
+        state = state['hyper']
+      self.hyper.load_state_dict(state)
+      print(f'Loaded initial weights from {start_weights}')
 
     # loop through epochs
     self.total_train_time = 0.0

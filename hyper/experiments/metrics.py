@@ -47,6 +47,9 @@ class Metric(object):
     """ Logs the metrics """
     return self.log(*args, **kwargs)
 
+  def reset(self):
+    pass
+
 
 @register_metric("ckas")
 class CKASMetric(Metric):
@@ -103,7 +106,14 @@ class AccuracyMetric(Metric):
   def __init__(self, classes: int, term_track: bool=True) -> None:
     self.acc = Accuracy(task="multiclass", num_classes=classes)
     self.term_track = term_track
-    
+    self.correct = 0.0
+    self.total = 0.0
+  
+  def reset(self):
+    """ Called right before training/testing epoch """
+    self.correct = 0.0
+    self.total = 0.0
+  
   @torch.no_grad()
   def log(self, trainer, model_bs, X, Y, track, *args, **kwargs):
     """ Logs the metrics """
@@ -120,16 +130,23 @@ class AccuracyMetric(Metric):
     _, bs = Y.repeat(model_bs).reshape(model_bs, -1).shape
     accs = []
     for i in range(model_bs):
-      accs.append(self.acc(preds[i*bs:(i+1)*bs], Y).cpu().item())
+      accs.append(100.0 * self.acc(preds[i*bs:(i+1)*bs], Y).cpu().item())
     
+    # get ensemble average softmax prediction
+    pred_classes = torch.argmax(F.softmax(Y_p, dim=-1).mean(0), dim=-1)
     res = {
-      'accuracy': self.acc(torch.argmax(F.softmax(Y_p, dim=-1).mean(0), dim=-1), Y),
+      'accuracy': 100.0 * self.acc(pred_classes, Y),  # track smooth
       'accuracy_std': float(np.std(accs)),
     }
     
     if self.term_track:  # also add to terminal/tqdm
+      # add running average to accuracy
+      self.total += float(Y.shape[0])
+      self.correct += pred_classes.eq(Y).sum().item()
+      
       res['term'] = {
-        'acc': res['accuracy']
+        'acc': res['accuracy'],
+        'run_acc': 100.0 * self.correct / self.total
       }
     
     return res

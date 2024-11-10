@@ -8,6 +8,7 @@ extras_file: ../fun.py
 
 # requirements (dataset and batch_size) for the dataloaders
 requirements:
+  seed: 10
   exp_name: mnist
   batch_size: 300
   loader_args:
@@ -144,8 +145,10 @@ trainer:
   optim_args:
     lr: 0.0065
     weight_decay: 0.0025
+  scheduler:
+    name: warmup_cosine_annealing
+    warmup: 20
   epochs: 85
-  warmup: 20
   save_every: 5
   callbacks:
     - ext.MNISTTestCallback()

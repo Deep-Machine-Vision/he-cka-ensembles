@@ -148,17 +148,7 @@ class FastCIFAR100(CIFAR100):
 def create_CIFAR100_dataset():
   train_transform = transforms.Compose([
     transforms.RandomHorizontalFlip(p=0.5),
-    transforms.RandomCrop(32, padding=4),
-    # transforms.RandomAffine(
-    #   degrees=15,
-    #   translate=(0.1, 0.1),
-    #   scale=(0.98, 1.03)
-    # ),
-    # transforms.ToTensor(),
-    # transforms.Normalize(
-    #   mean=CIFAR_MEAN,
-    #   std=CIFAR_STD
-    # )
+    transforms.RandomCrop(32, padding=4)
   ])
   train_dataset = FastCIFAR100(root=DATA_DIR, train=True, download=True, transform=train_transform)
   test_dataset = FastCIFAR100(root=DATA_DIR, train=False, download=True)

@@ -8,6 +8,7 @@ extras_file: ../fun.py
 
 # requirements (dataset and batch_size) for the dataloaders
 requirements:
+  seed: 10
   exp_name: mnist
   batch_size: 300
   loader_args:
@@ -91,7 +92,7 @@ hyper:
 
 # specify training method
 method:
-  name: basic
+  name: mle
   num: 5
   ind_loss:
     name: cross_entropy
@@ -102,11 +103,13 @@ trainer:
   ood_N: 100
   clip: 0.05
   optim: 'adamw'
+  scheduler:
+    name: warmup_cosine_annealing
+    warmup: 20
   optim_args:
     lr: 0.002405
     weight_decay: 0.0025
   epochs: 85
-  warmup: 20
   save_every: 5
   callbacks:
     - ext.MNISTTestCallback()

@@ -39,7 +39,7 @@ def build_method(config: dict):
   return cls(**config)
 
 
-@register_method("basic")
+@register_method("mle")
 class ParticleMethods(nn.Module):
   def __init__(self, num: int, model_kernel: BaseModelKernel=None, ind_loss: LossFunction=None, ood_loss: LossFunction=None, beta_ind: float=1.0, beta_ood: float=1.0, l2_reg: float=None, learnable_beta: bool=False) -> None:
     """ Class to hold particle methods """
@@ -166,9 +166,9 @@ class ParticleMethods(nn.Module):
 
 @register_method("svgd")
 class SVGD(ParticleMethods):
-  def __init__(self, num: int, model_kernel: Union[ModelLayersKernel, WeightKernel], ind_loss: LossFunction, kde: bool=False) -> None:
+  def __init__(self, num: int, model_kernel: Union[ModelLayersKernel, WeightKernel], ind_loss: LossFunction, kde: bool=False, beta_ind: float=1.0) -> None:
     """ Weight Space Stein Variational Gradient Descent """
-    super(SVGD, self).__init__(num, model_kernel, ind_loss)
+    super(SVGD, self).__init__(num, model_kernel, ind_loss, beta_ind=beta_ind)
     
     if self.ood_loss is not None:
       raise ValueError("OOD loss is not supported for SVGD")
@@ -191,11 +191,11 @@ class SVGD(ParticleMethods):
     """
     
     # flatten parameters
-    flat_params = flatten_keys(params)
+    flat_params = WeightKernel.filter_params(params)  # remove buffers
     all_flat_params = list(flat_params.values()) + shared_params
-    
+
     # get in distribution samples
-    loss = track['ind_loss']  # get unweighted ind loss
+    loss = self.beta_ind*track['ind_loss']  # get unweighted ind loss/do our weighting here
     pred = track['pred_ind']
     feats = track['feats_ind']
     

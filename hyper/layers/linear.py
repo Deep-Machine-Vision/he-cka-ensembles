@@ -12,7 +12,7 @@ import math
 
 @register_gen_module('linear')
 class Linear(ParametersGroup):
-  def __init__(self, in_features: int, out_features: int, bias: bool=True, act: str=None, gamma: Union[str, float, object]=1.0, track: Union[bool, str]=True):
+  def __init__(self, in_features: int, out_features: int, bias: bool=True, act: str=None, gamma: Union[str, float, object]=1.0, param_scale: str='torch', track: Union[bool, str]=True):
     """ Creates a batched linear layer operator
 
     Args:
@@ -20,6 +20,7 @@ class Linear(ParametersGroup):
       out_features (int): expected number of output features per model
       bias (bool, optional): include bias term (out_features worth). Defaults to True.
       act (str, optional): the activation to use after the linear layer. Default is None.
+      param_scale (str): weight initialization/scaling method. Default is torch module equivalent.
       track (bool|str): track the internal feature. Use 'detached' to track without backprop. Default is True
     """
     # specify expected parameter shapes
@@ -27,9 +28,24 @@ class Linear(ParametersGroup):
     self.out_features = out_features
     self.weight_shape = (out_features, in_features)
     self.bias_shape = (out_features,)
-    self.invsq = math.sqrt(1.0 / in_features)
-    self.scale = activation.activation_gamma(gamma) * self.invsq
+    self.param_scale = param_scale
     self.bias = bias
+    
+    # handle parameter scaling and signal gain by preceding activation function
+    if self.param_scale == 'gamma':
+      self.invsq = math.sqrt(1 / in_features)
+      self.gamma = activation.activation_gamma(gamma)
+      self.scale = self.gamma * self.invsq
+      self.bias_scale = self.invsq
+    elif self.param_scale == 'torch':  # attempt to match init by torch init module
+      gain = torch.nn.init.calculate_gain('leaky_relu', math.sqrt(5.0))
+      std = gain / math.sqrt(in_features)
+      self.scale = math.sqrt(std)
+      self.bias_scale = math.sqrt(1.0 / math.sqrt(in_features))
+    else:
+      raise ValueError(f'Invalid paramater scaling method {self.param_scale}')
+    
+    
     if (not act is None) and isinstance(act, str):
       if hasattr(F, act):
         self.act = getattr(F, act)
@@ -59,12 +75,23 @@ class Linear(ParametersGroup):
     # these are autoscaled already by _param_scale
     params = self.gen_empty_params(dtype=dtype, device=device)
     with torch.no_grad():
-      init.normal_(params['weight'], 0.0, 1.0)
-      # init.normal_(params['weight'], 0.0, self.invsq**2.0)
-      if self.bias:
-        # init.zeros_(params['bias'])
-        # init.normal_(params['bias'], 0.0, self.scale**2.0)
-        init.normal_(params['bias'], 0.0, 1.0)
+      if self.param_scale == 'gamma':
+        init.normal_(params['weight'], 0.0, 1.0)
+        # init.normal_(params['weight'], 0.0, self.invsq**2.0)
+        if self.bias:
+          # init.zeros_(params['bias'])
+          # init.normal_(params['bias'], 0.0, self.scale**2.0)
+          init.normal_(params['bias'], 0.0, 1.0)
+      elif self.param_scale == 'torch':
+        init.uniform_(params['weight'], -math.sqrt(3.0), math.sqrt(3.0))
+        if self.bias:
+          init.uniform_(params['bias'], -math.sqrt(3.0), math.sqrt(3.0))
+        # init.kaiming_uniform_(params['weight'], a=math.sqrt(5))
+        # if self.bias:
+        #   fan_in, _ = init._calculate_fan_in_and_fan_out(params['weight'])
+        #   bound = 1 / math.sqrt(fan_in) if fan_in > 0 else 0
+        #   init.uniform_(params['bias'], -bound, bound)
+        
     return params
 
   def _param_scale(self, weight, bias):
@@ -76,7 +103,7 @@ class Linear(ParametersGroup):
     """
     weight = self.scale * weight
     if bias is not None:
-      bias = self.invsq * bias  # scale bias var by 1/n
+      bias = self.bias_scale * bias
     return weight, bias
 
   def _forward(self, viewed: torch.Tensor, x: torch.Tensor):
@@ -113,13 +140,24 @@ class Linear(ParametersGroup):
       raise ValueError(f'Badx dimension. Got {x.ndim}')
 
     # fix bias to work across batch dim and not model dim
+    # @TODO figure out tiny numerical difference (1e-7) between baddm and linear
     if self.bias:
       bias = viewed['bias'].unsqueeze(1) # broadcastable across feature batch
       
       # now expected shape is [B, examples, out_features]
       y = torch.baddbmm(bias, x, viewed['weight'].transpose(1, 2))
+      # y = torch.stack(
+      #   [
+      #     F.linear(x[i], weight=viewed['weight'][i], bias=viewed['bias'][i]) for i in range(viewed['weight'].shape[0])
+      #   ]
+      # )
     else:
       y = torch.bmm(x, viewed['weight'].transpose(1, 2))
+      # y = torch.stack(
+      #   [
+      #     F.linear(x[i] + 1, weight=viewed['weight'][i]) for i in range(viewed['weight'].shape[0])
+      #   ]
+      # )
 
     if self.act is None:
       return y
@@ -134,6 +172,7 @@ class Linear(ParametersGroup):
     # print()
     return y
 
+  ''' OLD IMPL
   def _model_batch_second_forward(self, viewed: torch.Tensor, x: torch.Tensor):
     """ Handles the batched linear forward operation
     
@@ -192,7 +231,8 @@ class Linear(ParametersGroup):
     # print('diff',  torch.sum(torch.abs(y[0] - self.act(F.linear(x[0], viewed['weight'][0], viewed['bias'][0])))))
     # print()
     return y
-
+  '''
+  
   def extra_repr(self) -> str:
     return f'in_features={self.in_features}, out_features={self.out_features}, activation={str(self.act)}'
 

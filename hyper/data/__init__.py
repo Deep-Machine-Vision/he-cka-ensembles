@@ -7,8 +7,9 @@ from hyper.data.fast_cifar import FastCIFAR10, FastCIFAR100
 from torch.utils.data.distributed import DistributedSampler
 from torch.utils.data import DataLoader
 from torch.utils.data import TensorDataset, Subset
+from hyper.util import set_seed
 from hyper.data.util import ddp_args
-from hyper.data.image_ood import get_mnist_ood_loader
+from hyper.data.image_ood import get_mnist_ood_loader, get_cifar_ood_loader
 from hyper.data.dirty_mnist import get_train_valid_loader as dmnist_loader
 import torch
 
@@ -56,7 +57,7 @@ DTD_MEAN = [0.485, 0.456, 0.406]
 DTD_STD = [0.229, 0.224, 0.225]
 
 
-def load_mnist(root: Optional[PathLike]=DATA_DIR, bs: int=100, drop_last=False, dirty=False, ddp=False, **extra) -> Tuple[DataLoader, DataLoader]:
+def load_mnist(root: Optional[PathLike]=DATA_DIR, bs: int=100, drop_last=False, dirty=False, ddp=False, load_seed=None, **extra) -> Tuple[DataLoader, DataLoader]:
   """ Handles loading the mnist train/test (if specified)
 
   Args:
@@ -69,6 +70,7 @@ def load_mnist(root: Optional[PathLike]=DATA_DIR, bs: int=100, drop_last=False, 
 
   bs_ood = extra.get('bs_ood', None)
   if bs_ood is not None:
+    set_seed(load_seed)
     ood_loader = get_mnist_ood_loader(
       batch_size=bs_ood,
       id_prob=0.35,
@@ -82,7 +84,7 @@ def load_mnist(root: Optional[PathLike]=DATA_DIR, bs: int=100, drop_last=False, 
       batch_size=bs,
       ddp=ddp
     )
-    
+    set_seed(load_seed)  # ensure even with ood we get same inlier seeding
     if bs_ood is None:
       return train_loader, test_loader
     return train_loader, test_loader, ood_loader
@@ -98,6 +100,7 @@ def load_mnist(root: Optional[PathLike]=DATA_DIR, bs: int=100, drop_last=False, 
   closed_data = extra.get('closed_set', True)
   print(f'Building mnist with K={open_K}')
 
+  set_seed(load_seed)  # ensure even with ood we get same inlier seeding
   train_dset = FastMNIST(
     open_K=open_K,
     closed_data=closed_data,
@@ -387,7 +390,7 @@ def load_svnh_test(bs: int=100, drop_last: bool=False, **extra):
   return data_loader
 
 
-def load_cifar(root: Optional[PathLike]=DATA_DIR, bs: int=100, drop_last: bool=False, cifar100: bool=False, **extra) -> Tuple[DataLoader, DataLoader]:
+def load_cifar(root: Optional[PathLike]=DATA_DIR, bs: int=100, drop_last: bool=False, cifar100: bool=False, load_seed=None, ddp=False, **extra) -> Tuple[DataLoader, DataLoader]:
   """ Handles loading the cifar train/test (if specified)
 
   Args:
@@ -397,12 +400,22 @@ def load_cifar(root: Optional[PathLike]=DATA_DIR, bs: int=100, drop_last: bool=F
       Tuple[DataLoader, DataLoader]: returns a tuple of the (train DataLoader, test DataLoader)
   """
 
+
+  bs_ood = extra.get('bs_ood', None)
+  if bs_ood is not None:
+    set_seed(load_seed)
+    ood_loader = get_cifar_ood_loader(
+      batch_size=bs_ood,
+      id_prob=0.35,
+      ddp=ddp
+    )
+
   root = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', root)
-  train_transform = transforms.Compose([
-    transforms.RandomCrop(32, padding=4),
-    transforms.RandomHorizontalFlip(p=0.5),
-    # transforms.RandomErasing(p=0.5, scale=(0.02, 0.4), value='random')
-  ])
+  # train_transform = transforms.Compose([
+  #   transforms.RandomCrop(32, padding=4),
+  #   transforms.RandomHorizontalFlip(p=0.5),
+  #   # transforms.RandomErasing(p=0.5, scale=(0.02, 0.4), value='random')
+  # ])
   
   # val_transform = transforms.Compose([
   #   transforms.ToTensor(),
@@ -412,59 +425,78 @@ def load_cifar(root: Optional[PathLike]=DATA_DIR, bs: int=100, drop_last: bool=F
   #   )
   # ])
 
-  open_K = extra.get('open_K')
-  closed_data = extra.get('closed_set', True)
-  print(f'Building cifar10 with K={open_K}')
+  transform_train = transforms.Compose([
+      transforms.RandomCrop(32, padding=4),
+      transforms.RandomHorizontalFlip(),
+      transforms.ToTensor(),
+      transforms.Normalize(mean=CIFAR_MEAN, std=CIFAR_STD),
+  ])
 
-  dset = FastCIFAR100 if cifar100 else FastCIFAR10
-  train_dataset = dset(
+  transform_val = transforms.Compose([
+      transforms.ToTensor(),
+      transforms.Normalize(mean=CIFAR_MEAN, std=CIFAR_STD)
+  ])
+
+  # open_K = extra.get('open_K')
+  # closed_data = extra.get('closed_set', True)
+  # print(f'Building cifar10 with K={open_K}')
+
+  set_seed(load_seed)
+  # dset = FastCIFAR100 if cifar100 else FastCIFAR10
+  # train_dataset = dset(
+  #   root=root,
+  #   open_K=open_K,
+  #   closed_data=closed_data,
+  #   train=True,
+  #   download=True,
+  #   transform=train_transform,
+  #   device=DEFAULT_DEVICE if extra.get('device') is None else extra.get('device')
+  # )
+  
+  # val_dataset = dset(
+  #   root=root,
+  #   open_K=open_K,
+  #   closed_data=closed_data,
+  #   train=False,
+  #   download=True,
+  #   device=DEFAULT_DEVICE if extra.get('device') is None else extra.get('device')
+  #   # transform=val_transform
+  # )
+  if cifar100:
+    raise NotImplementedError
+  
+  
+  train_dataset = datasets.CIFAR10(
     root=root,
-    open_K=open_K,
-    closed_data=closed_data,
     train=True,
-    download=True,
-    transform=train_transform,
-    device=DEFAULT_DEVICE if extra.get('device') is None else extra.get('device')
-  )
-  val_dataset = dset(
-    root=root,
-    open_K=open_K,
-    closed_data=closed_data,
-    train=True,
-    download=True,
-    device=DEFAULT_DEVICE if extra.get('device') is None else extra.get('device')
-    # transform=val_transform
+    transform=transform_train,
+    download=True
   )
   
-  num_train = len(train_dataset)
-  indices = list(range(num_train))
-  val_size = 0.1
-  split = int(np.floor(val_size * num_train))
-
-  # using same setup at ddu for replication
-  val_seed = 1
-  np.random.seed(val_seed)
-  np.random.shuffle(indices)
-
-  train_idx, valid_idx = indices[split:], indices[:split]
-
-  train_subset = Subset(train_dataset, train_idx)
-  valid_subset = Subset(val_dataset, valid_idx)
+  val_dataset = datasets.CIFAR10(
+    root=root,
+    train=False,
+    transform=transform_val,
+    download=True  # @TODO do an actual val split
+  )
 
   train_loader = torch.utils.data.DataLoader(
-    train_subset,
+    train_dataset,
     batch_size=bs,
     shuffle=True,
     **CIFAR_LOADER_ARGS
   )
   val_loader = torch.utils.data.DataLoader(
-    valid_subset,
+    val_dataset,
     batch_size=bs,
     shuffle=False,
     **CIFAR_LOADER_ARGS
   )
 
-  return train_loader, val_loader
+  if bs_ood is None:
+      return train_loader, val_loader
+  return train_loader, val_loader, ood_loader
+
 
 def load_cifar_test(root: Optional[PathLike]=DATA_DIR, bs: int=100, drop_last: bool=False, cifar100: bool=False, **extra):
   """ CIFAR test loader """
@@ -477,19 +509,30 @@ def load_cifar_test(root: Optional[PathLike]=DATA_DIR, bs: int=100, drop_last: b
   #   )
   # ])
 
-  open_K = extra.get('open_K')
-  closed_data = extra.get('closed_set', True)
-  print(f'Building cifar10 with K={open_K}')
+  # open_K = extra.get('open_K')
+  # closed_data = extra.get('closed_set', True)
+  # print(f'Building cifar10 with K={open_K}')
 
-  dset = FastCIFAR100 if cifar100 else FastCIFAR10
-  dataset = dset(
+  # dset = FastCIFAR100 if cifar100 else FastCIFAR10
+  # dataset = dset(
+  #   root=root,
+  #   train=False,
+  #   download=True,
+  #   open_K=open_K,
+  #   closed_data=closed_data,
+  #   device=DEFAULT_DEVICE
+  #   # transform=transform
+  # )
+  transform = transforms.Compose([
+    transforms.ToTensor(),
+    transforms.Normalize(mean=CIFAR_MEAN, std=CIFAR_STD)
+  ])
+
+  dataset = datasets.CIFAR10(
     root=root,
     train=False,
-    download=True,
-    open_K=open_K,
-    closed_data=closed_data,
-    device=DEFAULT_DEVICE
-    # transform=transform
+    transform=transform,
+    download=True
   )
 
   data_loader = torch.utils.data.DataLoader(

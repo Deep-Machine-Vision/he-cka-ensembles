@@ -6,6 +6,7 @@ extras_file: fun.py
 
 # requirements (dataset and batch_size) for the dataloaders
 requirements:
+  seed: 10
   exp_name: mnist
   batch_size: 300
 
@@ -15,50 +16,55 @@ hyper:
   name: ensemble
   ensemble_size: 5
   target:  # build lenet
-    name: sequential
-    modules:
-      - name: conv2d
-        in_channels: 1
-        out_channels: 6
-        kernel_size: 5
-        act: crater  # variance preserving variant of gelu
-        pooling: max
-        gamma: 1.0
-      - name: conv2d
-        in_channels: 6
-        out_channels: 16
-        kernel_size: 5
-        act: crater
-        pooling: max
-        gamma: crater
-      - name: flatten
-        track: false  # do not track this layer
-      - name: linear
-        in_features: 256
-        out_features: 120
-        act: crater
-        gamma: crater
-      - name: linear
-        in_features: 120
-        out_features: 84
-        act: crater
-        gamma: crater
-      - name: linear
-        in_features: 84
-        out_features: 10
-        act: null
-        gamma: crater
+    name: lenet5
+    in_channels: 1
+    num_classes: 10
+    # name: sequential
+    # modules:
+    #   - name: conv2d
+    #     in_channels: 1
+    #     out_channels: 6
+    #     kernel_size: 5
+    #     act: crater  # variance preserving variant of gelu
+    #     pooling: max
+    #     gamma: 1.0
+    #   - name: conv2d
+    #     in_channels: 6
+    #     out_channels: 16
+    #     kernel_size: 5
+    #     act: crater
+    #     pooling: max
+    #     gamma: crater
+    #   - name: flatten
+    #     track: false  # do not track this layer
+    #   - name: linear
+    #     in_features: 256
+    #     out_features: 120
+    #     act: crater
+    #     gamma: crater
+    #   - name: linear
+    #     in_features: 120
+    #     out_features: 84
+    #     act: crater
+    #     gamma: crater
+    #   - name: linear
+    #     in_features: 84
+    #     out_features: 10
+    #     act: null
+    #     gamma: crater
 
 
 # trainer specific settings
 trainer:
-  clip: 0.05  # 0.1
+  clip: 0.05
   optim: 'adamw'
   optim_args:
     lr: 0.0065
     weight_decay: 0.001
+  scheduler:
+    name: warmup_cosine_annealing
+    warmup: 5
   epochs: 50
-  warmup: 5
   save_every: 5
   callbacks:
     - ext.MNISTTestCallback()

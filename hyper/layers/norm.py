@@ -205,7 +205,6 @@ class _BatchNorm(_NormBase):
         exponential_average_factor = [1.0 / float(num_batches_tracked[ind]) for ind in range(input.shape[0])]
       else:  # use exponential moving average
         exponential_average_factor = [self.momentum] * input.shape[0]
-    
     # given batchnorm needs direct access to buffer we have to loop over fixed parameter vals
     res = torch.stack(
        [
@@ -213,8 +212,8 @@ class _BatchNorm(_NormBase):
           input[ind],
           running_mean[ind] if not self.training or self.track_running_stats else None,
           running_var[ind] if not self.training or self.track_running_stats else None,
-          weight[ind],
-          bias[ind],
+          weight[ind] if weight is not None else None,
+          bias[ind] if bias is not None else None,
           bn_training,
           exponential_average_factor[ind],  # could be different depending on model sampling
           self.eps,

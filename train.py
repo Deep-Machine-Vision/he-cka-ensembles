@@ -13,6 +13,7 @@ import copy
 import torch.distributed as dist
 import torch.multiprocessing as mp
 
+from hyper.util import set_seed
 from hyper.util.collections import unflatten_keys
 from hyper.experiments.exp import build_from_file
 
@@ -34,7 +35,7 @@ p.add('-l', '--load', type=str, default=None, help='Load a model from a checkpoi
 p.add('-s', '--save', type=str, default='model', help='Save a model to a checkpoint. Relative to output or absolute path')
 p.add('-se', '--save_every', type=int, default=None, help='Save a model every n epochs. Default load from config')
 p.add('-g', '--gpus', type=int, default=None, help='Use DDP training with N gpus. Default is None or one GPU and no DDP')
-p.add('--seed', type=int, default=5, help='Seed for reproducibility')
+p.add('--seed', type=int, default=None, help='Seed for reproducibility')
 args = p.parse_args()
 
 # output in the experiments folder
@@ -118,13 +119,24 @@ def train_main(run=0, rank=None, ddp=False):
     if 'save_every' in configs['trainer']:
       args.save_every = configs['trainer']['save_every']
   
+  pretrain = None
+  if 'hyper' in configs and 'weights' in configs['hyper']:
+    print('Attempting to load initial pretrained weights')
+    pretrain = configs['hyper']['weights']
+  
+  if args.seed is None:  # use the default load seed + run
+    seed = configs['requirements'].get('seed')
+  else:
+    seed = args.seed
+
   # start the training on this device
   trainer.train(
     load_from_checkpoint=args.load,
     save_checkpoint=args.save,
     save_every=args.save_every,
-    seed=None,
-    ddp_rank=rank
+    seed=seed + run if seed is not None else None,
+    ddp_rank=rank,
+    start_weights=pretrain
   )
 
 
@@ -190,14 +202,12 @@ if __name__ == '__main__':
       project=WANDB_PROJECT
     )
   else: # run normally
+    # set seed for reproducibility (its set in multiple places since we use ood points/shifts results)
+    set_seed(5 if args.seed is None else args.seed)
+    
     # run for n runs
     for run in range(args.runs):
       print('Starting run', run)
-      
-      # set seed for reproducibility
-      random.seed(args.seed + run)
-      torch.manual_seed(args.seed + run)
-      np.random.seed(args.seed + run)
       
       # rebuild the trainer each time/restart ddp if applicable
       if ddp:

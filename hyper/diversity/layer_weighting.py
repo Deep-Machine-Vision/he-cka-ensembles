@@ -2,6 +2,7 @@ from typing import List, Union
 import torch.nn as nn
 import torch
 import copy
+import math
 
 
 AVAILABLE_WEIGHTING = {}
@@ -29,17 +30,37 @@ def build_weighting(config: dict):
 
 
 class LayerWeighting(nn.Module):
-  def __init__(self) -> None:
+  def __init__(self, ord=1) -> None:
     """ Class to calculate the weighting of each layer in a model. """
     super(LayerWeighting, self).__init__()
     self.total = None
+    self.ord = ord
   
   def get_weight(self, layer: int, total: int, norm: bool=True):
     raise NotImplementedError("Must implement get_weight")
 
+  def _apply_ord(self, n):
+    if self.ord is None:
+      return n
+    
+    if self.ord == 1:
+      return abs(n)
+    elif self.ord >= 2:
+      return abs(n)**(self.ord)
+    else:
+      raise ValueError
+
   def total_sum(self, total: int):
     """ Get the total sum of the weights """
-    return sum(self.get_weight(i, total, norm=False) for i in range(total))
+    s = sum(self.get_weight(i, total, norm=False) for i in range(total))  # expected ord in get_weight
+    if self.ord is None:
+      return s
+    elif self.ord == 1:
+      return s
+    elif self.ord == 2:
+      return math.sqrt(s)
+    elif self.ord > 2:
+      return s**(1.0 / self.ord)
   
   def save_total(self, total: int):
     """ Calculate the sum of the weights """
@@ -121,7 +142,7 @@ class TensorLayerWeighting(LayerWeighting):
 
 @register_weighting("list")
 class ListLayerWeighting(LayerWeighting):
-  def __init__(self, weights: Union[List[float], torch.Tensor]) -> None:
+  def __init__(self, weights: Union[List[float], torch.Tensor], normalize: bool=True, ord=None) -> None:
     """ Class to calculate the weighting of each layer in a model.
     
     This is the most simple class that just takes a list of weights for each layer.
@@ -129,28 +150,31 @@ class ListLayerWeighting(LayerWeighting):
     
     Args:
       weights (List[float]): The weights for each layer
+      normalize (bool): Normalize the weights. Default is True
     """
-    super(ListLayerWeighting, self).__init__()
+    super(ListLayerWeighting, self).__init__(ord=ord)
     
     if weights is None:
       raise ValueError("Weights must be a list")
     
     self.weights = weights
+    self.normalize = normalize
   
   def get_weight(self, layer: int, total: int, norm: bool=True):
     """ Get the weight for a given layer """
     if layer >= len(self.weights):
       raise ValueError("Layer {} not in weights".format(layer))
     
-    if norm:
+    w = self._apply_ord(self.weights[layer])
+    if norm and self.normalize:
       self.save_total_if_needed(total)
-      return self.weights[layer] / self.total  # get normalized variant
-    return self.weights[layer]
+      return w / self.total  # get normalized variant
+    return w
 
 
 @register_weighting("linear")
 class LinearLayerWeighting(LayerWeighting):
-  def __init__(self, start_weight: float=1.0, weight_increase: float=1.0) -> None:
+  def __init__(self, start_weight: float=1.0, weight_increase: float=1.0, ord=None) -> None:
     """ Class to calculate the weighting of each layer in a model.
     
     This class linearly interpolates between the start and end weights. Where weight_increase determines the rate of change.
@@ -160,12 +184,12 @@ class LinearLayerWeighting(LayerWeighting):
       start_weight (float, optional): The weight for the first layer
       weight_increase (float, optional): The rate of change of the weights
     """
-    super(LinearLayerWeighting, self).__init__()
+    super(LinearLayerWeighting, self).__init__(ord=ord)
     self.start = start_weight
     self.increase = weight_increase
 
   def get_weight(self, layer: int, total: int, norm: bool=True):
-    value = (self.start + self.increase * layer)
+    value = self._apply_ord(self.start + self.increase * layer)
     if norm:
       self.save_total_if_needed(total)
       return value / self.total
@@ -184,7 +208,7 @@ class UniformLayerWeighting(LinearLayerWeighting):
 
 @register_weighting("exponential")
 class ExponentialLayerWeighting(LayerWeighting):
-  def __init__(self, start_weight: float=1.0, weight_increase: float=1.0) -> None:
+  def __init__(self, start_weight: float=1.0, weight_increase: float=1.0, ord=None) -> None:
     """ Class to calculate the weighting of each layer in a model.
     
     This class exponentially interpolates between the start and end weights. Where weight_increase determines the rate of change.
@@ -194,21 +218,21 @@ class ExponentialLayerWeighting(LayerWeighting):
       start_weight (float, optional): The weight for the first layer
       weight_increase (float, optional): The rate of change of the weights
     """
-    super(ExponentialLayerWeighting, self).__init__()
+    super(ExponentialLayerWeighting, self).__init__(ord=ord)
     self.start = start_weight
     self.increase = weight_increase
 
   def get_weight(self, layer: int, total: int, norm: bool=True):
-    value = (self.start * self.increase ** layer)
+    value = self._apply_ord(self.start * self.increase ** layer)
     if norm:
       self.save_total_if_needed(total)
-      return (self.start * self.increase ** layer) / self.total
+      return value / self.total
     return value
 
 
 @register_weighting("start_end_linear")
 class StartEndLinearLayerWeighting(LayerWeighting):
-  def __init__(self, first_layer: float, middle_start: float, middle_increase: float, last_layer: float=None) -> None:
+  def __init__(self, first_layer: float, middle_start: float, middle_increase: float, last_layer: float=None, ord=None) -> None:
     """ Class to calculate the weighting of each layer in a model.
     
     This class linearly interpolates between the start and end weights. Where weight_increase determines the rate of change.
@@ -220,7 +244,7 @@ class StartEndLinearLayerWeighting(LayerWeighting):
       middle_increase (float): The rate of change of the middle weights
       last_layer (float): The weight for the last layer
     """
-    super(StartEndLinearLayerWeighting, self).__init__()
+    super(StartEndLinearLayerWeighting, self).__init__(ord=ord)
     self.first = first_layer
     self.middle_start = middle_start
     self.increase = middle_increase
@@ -234,7 +258,9 @@ class StartEndLinearLayerWeighting(LayerWeighting):
     else:
       value = (self.middle_start + self.increase * (layer - 1))
 
+    value = self._apply_ord(value)
     if norm:
       self.save_total_if_needed(total)
+      print('VALUE', value / self.total)
       return value / self.total
     return value

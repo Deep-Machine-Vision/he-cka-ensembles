@@ -35,9 +35,11 @@ trainer:
   optim_args:
     lr: 0.05
     weight_decay: 0.0075
+  scheduler:
+    name: warmup_cosine_annealing
+    warmup: 80
   epochs: 1000
   lr_patience: 400
-  warmup: 80
   max_iter: 1200
   save_every: 250
   callbacks:

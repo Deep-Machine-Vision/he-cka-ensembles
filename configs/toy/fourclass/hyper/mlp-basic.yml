@@ -62,7 +62,7 @@ hyper:
 
 # specify training method
 method:
-  name: basic
+  name: mle
   num: 30
   ind_loss:
     name: cross_entropy

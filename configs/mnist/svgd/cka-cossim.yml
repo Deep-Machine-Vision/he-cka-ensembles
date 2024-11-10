@@ -10,7 +10,7 @@ method:
     reduction: none
     layer_kernel:
       name: cka
-      eps: 0.00023
+      eps: 0.00025
       detach_right: true
       reduction: none
       feature_kernel:
@@ -19,10 +19,10 @@ method:
         kernel: cossim
     layer_weighting:
       name: start_end_linear
-      first_layer: 0.029
-      middle_start: 0.587
-      middle_increase: 1.80
-      last_layer: 6.833
+      first_layer: 0.0  # 0.029
+      middle_start: 0.5  # 0.587
+      middle_increase: 1.75  # 1.80
+      last_layer: 6.5  # 6.833
 
   ind_loss:
     name: cross_entropy

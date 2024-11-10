@@ -163,8 +163,19 @@ class WeightKernel(FeatureKernel):
     super(WeightKernel, self).__init__(kernel, detach_diag, readd_diag, params, *args, **kwargs)
 
   @staticmethod
+  def filter_params(param_dict):
+    """ Filters through parameters to remove common buffers like norm buffers in ResNet18s """
+    params = flatten_keys(param_dict)
+    fixed_params = OrderedDict()
+    for k, v in params.items():
+      if '.norm_buffer.' not in k:  # see resnet.py for this ref
+        fixed_params[k] = v
+    return fixed_params
+
+  @staticmethod
   def flatten_weights(params):
     # do not include shared target parameters
+    params = WeightKernel.filter_params(params)  # remove buffers
     flat_par_params, par_empty_params = flatten_keys(params, include_empty=True)
     par_params = list(flat_par_params.values())
     

@@ -55,7 +55,7 @@ class LossFunction(nn.Module):
 
 @register_loss("cross_entropy")
 class BatchedCrossEntropy(LossFunction):
-  """ Cross entropy loss """
+  """ Cross entropy loss with multiple models. Makes assumption all models predict on the exact same set of examples"""
   def __init__(self, reduction: str='mean'):
     super(BatchedCrossEntropy, self).__init__()
     self.reduction = reduction

@@ -14,6 +14,7 @@ import copy
 from hyper.util.collections import unflatten_keys
 from hyper.experiments.exp import build_from_file, null_fn
 from hyper.experiments.testing.mnist import run_mnist_tests
+from hyper.experiments.testing.cifar import run_cifar10_tests
 
 
 # specify wandb project
@@ -24,7 +25,8 @@ os.environ['MAX_WORKERS'] = '0'
 
 
 EVAL_SCRIPTS = {
-  'mnist': run_mnist_tests
+  'mnist': run_mnist_tests,
+  'cifar10': run_cifar10_tests
 }
 
 
@@ -34,7 +36,7 @@ p.add('config', type=str, help='The training configuration file to use. Note tha
 p.add('experiment', type=str, choices=['mnist', 'cifar10', 'cifar100'], help='The set of evaluations to run')
 p.add('file', type=str, default='model-50.pt', help='Name of the weight file located in the output folder')
 p.add('-f', '--folder', type=str, default=None, help='Base to output folder to load project from. Must contain be same relative pos to configs')
-p.add('-r', '--runs', type=int, help='The number of runs to process')
+p.add('-r', '--runs', default=1, type=int, help='The number of runs to process')
 p.add('-mbs', '--model_bs', type=int, default=None, help='Specify the model batch size. Must be specified for hypernetwork based models, optional for ensemble ones, with default being ensemble size.')
 p.add('--cka', action='store_true', default=False, help='Plot CKA values as well')
 p.add('--seed', type=int, default=5, help='Seed for reproducibility')

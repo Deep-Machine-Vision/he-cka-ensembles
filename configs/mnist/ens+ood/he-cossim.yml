@@ -10,10 +10,9 @@ requirements:
 method:
   name: repulsive_kernel
   num: 5
-  gamma: 0.2  # 0.61
-  gamma_ood: 1.125  # 1.025
-  beta_ood: 1.67  # 1.15
-
+  gamma: 0.25
+  gamma_ood: 1.25
+  beta_ood: 1.5
   warmup: 50  # warmup he/repulsive term
   model_kernel:
     name: model_layers
@@ -27,10 +26,10 @@ method:
         kernel: cossim
     layer_weighting:
       name: start_end_linear
-      first_layer: 0.03
-      middle_start: 0.60
-      middle_increase: 1.80
-      last_layer: 6.8
+      first_layer: 0.0
+      middle_start: 0.5
+      middle_increase: 1.75
+      last_layer: 6.5
 
   model_kernel_ood:
     name: model_layers
@@ -44,10 +43,10 @@ method:
         kernel: cossim
     layer_weighting:
       name: start_end_linear
-      first_layer: 0.03
-      middle_start: 0.60
-      middle_increase: 1.80
-      last_layer: 6.8
+      first_layer: 0.0
+      middle_start: 0.5
+      middle_increase: 1.75
+      last_layer: 6.5
 
   ind_loss:
     name: cross_entropy

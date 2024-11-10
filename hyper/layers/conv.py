@@ -29,6 +29,7 @@ class _ConvNd(ParametersGroup):
       padding_mode: str,
       act: str=None,
       gamma: Union[str, float, object]=1.0,
+      param_scale: str='torch',
       track: Union[bool, str]=True):
     """ Creates a batched convolution layer operator
 
@@ -39,6 +40,7 @@ class _ConvNd(ParametersGroup):
       dilation (int): dilation of kernel
       bias (bool, optional): include bias term (out_channels worth). Defaults to True.
       act (str, optional): the activation to use after the linear layer. Default is None.
+      param_scale (str): weight initialization/scaling method. Default is torch module equivalent.
       track (bool|str): track the internal feature. Use 'detached' to track without backprop. Default is True
     """
 
@@ -72,6 +74,7 @@ class _ConvNd(ParametersGroup):
     self.output_padding = output_padding
     self.groups = groups
     self.padding_mode = padding_mode
+    self.param_scale = param_scale
 
     if isinstance(self.padding, str):
       self._reversed_padding_repeated_twice = [0, 0] * len(kernel_size)
@@ -94,10 +97,19 @@ class _ConvNd(ParametersGroup):
     self.bias = bias
 
     # number of input features and scaling features for conv
-    self.fan_in = in_channels * np.prod(kernel_size)
-    self.invsq = math.sqrt(groups / self.fan_in)
-    self.gamma = activation.activation_gamma(gamma)
-    self.scale = self.gamma * self.invsq
+    self.fan_in = (in_channels // groups) * np.prod(kernel_size)
+    if self.param_scale == 'gamma':
+      self.invsq = math.sqrt(1 / self.fan_in)
+      self.gamma = activation.activation_gamma(gamma)
+      self.scale = self.gamma * self.invsq
+      self.bias_scale = self.invsq
+    elif self.param_scale == 'torch':  # attempt to match init by torch init module
+      gain = torch.nn.init.calculate_gain('leaky_relu', math.sqrt(5.0))
+      std = gain / math.sqrt(self.fan_in)
+      self.scale = math.sqrt(std)
+      self.bias_scale = math.sqrt(1.0 / math.sqrt(self.fan_in))
+    else:
+      raise ValueError(f'Invalid paramater scaling method {self.param_scale}')
     
     # get the activation function if defined
     if (not act is None) and isinstance(act, str):
@@ -129,36 +141,32 @@ class _ConvNd(ParametersGroup):
     # by default we just initialize with unit gaussian
     # as we scale them later
     params = self.gen_empty_params(dtype=dtype, device=device)
-    init.normal_(params['weight'], 0.0, 1.0)
-    if self.bias:
-      init.normal_(params['bias'], 0.0, 1.0)
+    
+    if self.param_scale == 'gamma':
+      init.normal_(params['weight'], 0.0, 1.0)
+      if self.bias:
+        init.normal_(params['bias'], 0.0, 1.0)
+    elif self.param_scale == 'torch':
+      init.uniform_(params['weight'], -math.sqrt(3.0), math.sqrt(3.0))
+      if self.bias:
+        init.uniform_(params['bias'], -math.sqrt(3.0), math.sqrt(3.0))
+      # init.kaiming_uniform_(params['weight'], a=math.sqrt(5))
+      # if self.bias:
+      #   fan_in, _ = init._calculate_fan_in_and_fan_out(params['weight'])
+      #   bound = 1 / math.sqrt(fan_in) if fan_in > 0 else 0
+      #   init.uniform_(params['bias'], -bound, bound)
+      # nonlinearity = 'relu'
+      # a = math.sqrt(5.0)
+      # fan_in, _ = torch.nn.init._calculate_fan_in_and_fan_out(params['weight'])
+      # gain = torch.nn.init.calculate_gain(nonlinearity, a)
+      # std = gain / math.sqrt(fan_in)
+      
+      # # params['weight'] = params['weight'] * std
+      
+      # # if self.bias:
+      # #   params['bias'] = params['bias'] * (1.0 / math.sqrt(fan_in))
+    
     return params
-  
-  ''' @TODO finish this
-  def gen_initialized_params(self, dtype=None, device=None, gain=1.0):
-    """ By default we generate parameters but sometimes it's useful to generate an initialized version, ie for an ensemble, of the parameters  """
-    if gain is None or not isinstance(gain, float):
-      raise ValueError('Gain must be a float')
-
-    # see link for init ref https://pytorch.org/docs/stable/generated/torch.nn.Linear.html
-    params = self.gen_empty_params(dtype=dtype, device=device)
-    if self.act is None:
-      k = torch.tensor(1.0 / params['weight'].shape[1], dtype=torch.float, device=device)
-      sqk = torch.sqrt(k)
-      init.uniform_(params['weight'], -sqk, sqk)
-    else:
-      if self.act.__name__ == 'relu' or self.act.__name__ == 'leaky_relu':
-        init.kaiming_normal_(params['weight'], mode='fan_in', nonlinearity=self.act.__name__)
-      else:
-        init.xavier_uniform_(params['weight'], gain=gain)
-
-    if self.bias:
-      if self.act is None:
-        init.uniform_(params['bias'], -sqk, sqk)
-      else:
-        init.zeros_(params['bias'])
-    return params
-  '''
 
   def _param_scale(self, viewed):
     """ Applies unit gaussian normalization across the batched parameters and gain on weight parameters and simple scaling on bias
@@ -168,7 +176,8 @@ class _ConvNd(ParametersGroup):
     """
     viewed['weight'] = self.scale * viewed['weight']
     if self.bias:
-      viewed['bias'] = self.invsq * viewed['bias']  # scale bias var by 1/n
+      viewed['bias'] = self.bias_scale * viewed['bias']
+      
     return viewed
 
   def _conv_forward(self, weight: torch.Tensor, bias: torch.Tensor) -> torch.Tensor:
@@ -220,6 +229,7 @@ class Conv2d(_ConvNd):
       pooling: Union[str, Callable]=None,
       pooling_kwargs: dict=CONV2D_DEFAULT_POOLING_ARGS,
       gamma: Union[str, float, object]=1.0,
+      param_scale: str='torch',
       track: Union[bool, str]=True):
     """ Creates a batched 2D convolution layer operator
 
@@ -233,6 +243,7 @@ class Conv2d(_ConvNd):
       pooling (str|Callable): method to pool. Options can be 'max', 'avg' or a function like F.max_pool2d. Default is None (ie no pooling).
       pooling_kwargs (dict): by default the kernel size is 2. You can pass any options to the pool function here.
       gamma (float|str|method): variance scaling correction coefficient. Autocalculated for common activations, default is no scaling ie 1.0. 
+      param_scale (str): weight initialization/scaling method. Default is torch module equivalent.
       track (bool|str): track the internal feature. Use 'detached' to track without backprop. Default is True
     
       Note: applying pooling in this module will spare you a reshape (with copy) if calling pooling in a separate module which will require tensor copies.
@@ -271,6 +282,7 @@ class Conv2d(_ConvNd):
       padding_mode,
       act,
       gamma,
+      param_scale,
       track
     )
     

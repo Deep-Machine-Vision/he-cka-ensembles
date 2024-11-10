@@ -10,28 +10,20 @@ method:
     reduction: none
     layer_kernel:
       name: he
-      eps: 0.00005  # 0.00035
-      arc_eps: 0.162  # 0.0035
+      eps: 0.00005
+      arc_eps: 0.165
       detach_right: true
       reduction: none
       feature_kernel:
         name: feature
         detach_diag: true
-        kernel: cossim  # rbf
-        # params:
-        #   param: 4.0
-    # layer_weighting:
-    #   name: start_end_linear
-    #   first_layer: 0.05
-    #   middle_start: 0.25
-    #   middle_increase: 1.0
-    #   last_layer: null
+        kernel: cossim
     layer_weighting:
       name: start_end_linear
-      first_layer: 0.029  # 0.05
-      middle_start: 0.587  # 0.25
-      middle_increase: 1.80  # 1.25
-      last_layer: 6.833  # 3.0
+      first_layer: 0.0  # 0.029
+      middle_start: 0.5  # 0.587
+      middle_increase: 1.75  # 1.80
+      last_layer: 6.5  # 6.833
 
   ind_loss:
     name: cross_entropy

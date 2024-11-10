@@ -1,5 +1,7 @@
 # local files
 outputs/
+weights/
+best.txt
 cossim_vs_mhe_ckas.pdf
 cossim_vs_mhe_mhes.pdf
 cossim_opt.gif
@@ -13,6 +15,11 @@ data/FashionMNIST
 data/FastMNIST
 data/MNIST
 data/mnist_ood
+data/cifar_ood
+data/cifar-10-batches-py
+data/cifar-10-python.tar.gz
+data/test_32x32.mat
+configs/bkp
 
 # wandb related files
 wandb/

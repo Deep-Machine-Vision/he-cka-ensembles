@@ -1,3 +1,5 @@
+# @TODO david update this to use same as paper values (on work machine)
+
 from hyper.experiments.metrics import Callback
 from hyper.data import generate_classification_data
 
